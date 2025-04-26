@@ -16,8 +16,13 @@
     "razel",
     "razel-cli"
   ],
-  "author": "",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ionian-aries/razel"
+  },
+  "author": "ionian-aries",
   "license": "ISC",
+  "homepage": "https://github.com/ionian-aries/razel",
   "dependencies": {
     "chokidar": "^4.0.3",
     "commander": "^13.1.0"
