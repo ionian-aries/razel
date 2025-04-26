@@ -19,6 +19,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "chokidar": "^4.0.3",
     "commander": "^13.1.0"
   }
 }
