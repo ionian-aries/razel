@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "vue.volar",
+    "vue.vscode-typescript-vue-plugin",
+    "streetsidesoftware.code-spell-checker",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode"
+  ]
+}

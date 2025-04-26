@@ -1,0 +1,24 @@
+{
+  "name": "razel",
+  "version": "1.0.0",
+  "description": "razel",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "bin": {
+    "razel": "bin/index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "razel",
+    "razel-cli"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "commander": "^13.1.0"
+  }
+}
