@@ -11,13 +11,14 @@ import { program } from "commander"; // 命令行参数解析库
 // 路径初始化
 const __filename = url.fileURLToPath(import.meta.url); // 获取当前文件绝对路径
 const __dirname = path.dirname(__filename); // 当前文件所在目录
-const ROOT_PATH = path.resolve(__dirname, "../"); // 项目根目录路径
+const PACKAGE_ROOT = path.resolve(__dirname, "../"); // 包的根目录路径
+const CWD = process.cwd(); // 获取用户当前工作目录
 
 // 任务队列（核心功能模块）
 const missions = [
   // 任务1: 版本显示
   (options = {}) => {
-    const file = path.resolve(ROOT_PATH, "./package.json");
+    const file = path.resolve(PACKAGE_ROOT, "./package.json");
     const json = fs.readFileSync(file, "utf8"); // 同步读取package.json
     const { version } = JSON.parse(json);
     options?.version && console.log(version); // 带-v参数时输出版本号
@@ -28,9 +29,9 @@ const missions = [
     const { name, port, dir } = options;
     if (name !== "syncSourceMapUrl") return; // 无项目名称时退出
 
-    // 定义锁文件路径
-    const lockFilePath = path.resolve(ROOT_PATH, `.${name}_${port}_${dir}.lock`);
-
+    // 定义锁文件路径 - 使用用户当前工作目录
+    const lockFilePath = path.resolve(CWD, `.${name}_${port}_${dir}.lock`);
+    
     // 检查锁文件是否存在
     if (fs.existsSync(lockFilePath)) {
       console.log("检测到其他终端正在运行本程序，本次执行退出！");
@@ -45,7 +46,7 @@ const missions = [
       return;
     }
 
-    const targetFile = path.resolve(ROOT_PATH, dir, "index.js"); // 目标文件路径
+    const targetFile = path.resolve(CWD, dir, "index.js"); // 目标文件路径 - 使用用户当前工作目录
     // 判断文件是否存在
     if (!fs.existsSync(targetFile)) {
       console.log(`文件不存在: ${targetFile}`);
@@ -146,13 +147,13 @@ const missions = [
     });
 
     // 监听正常退出事件
-    process.on("exit", () => {
-      try {
-        fs.unlinkSync(lockFilePath);
-      } catch (err) {
-        console.error(`删除锁文件时出错: ${err}`);
-      }
-    });
+    // process.on("exit", () => {
+    //   try {
+    //     fs.unlinkSync(lockFilePath);
+    //   } catch (err) {
+    //     console.error(`删除锁文件时出错: ${err}`);
+    //   }
+    // });
   },
 ];
 

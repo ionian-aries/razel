@@ -17,7 +17,7 @@ coverage
 tmp
 
 # Editor directories and files
-# .vscode/*
+.vscode/*
 .node-version
 # !.vscode/extensions.json
 .idea
