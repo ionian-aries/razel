@@ -7,6 +7,7 @@ import fs from "fs"; // 文件系统操作
 import url from "url"; // URL 解析
 import path from "path"; // 路径处理
 import { program } from "commander"; // 命令行参数解析库
+import net from "net"; // 添加 net 模块导入
 
 // 路径初始化
 const __filename = url.fileURLToPath(import.meta.url); // 获取当前文件绝对路径
@@ -27,133 +28,115 @@ const missions = [
   // 任务2: 插件创建（核心功能）
   (options = {}) => {
     const { name, port, dir } = options;
-    if (name !== "syncSourceMapUrl") return; // 无项目名称时退出
+    if (name !== "syncSourceMapUrl") return;
 
-    // 定义锁文件路径 - 使用用户当前工作目录
-    const lockFilePath = path.resolve(CWD, `.${name}_${port}_${dir}.lock`);
-    
-    // 检查锁文件是否存在
-    if (fs.existsSync(lockFilePath)) {
-      console.log("检测到其他终端正在运行本程序，本次执行退出！");
-      return;
-    }
+    // 创建端口锁
+    const lockServer = net.createServer();
+    const lockPort = parseInt(port) + 1000; // 使用主端口+1000作为锁端口
 
-    // 创建锁文件
-    try {
-      fs.writeFileSync(lockFilePath, 'locked');
-    } catch (err) {
-      console.error(`创建锁文件时出错: ${err}`);
-      return;
-    }
-
-    const targetFile = path.resolve(CWD, dir, "index.js"); // 目标文件路径 - 使用用户当前工作目录
-    // 判断文件是否存在
-    if (!fs.existsSync(targetFile)) {
-      console.log(`文件不存在: ${targetFile}`);
-      // 删除锁文件
-      fs.unlinkSync(lockFilePath);
-      return;
-    }
-    // 定义一个标志位，用于避免自身修改触发事件
-    let isSelfModifying = false;
-    // 防抖定时器
-    let debounceTimer;
-    // 防抖时间（毫秒）
-    const debounceTime = 200;
-
-    const targetStr = "sourceMappingURL=index.js.map"; // 目标字符串
-    const replaceStr = `sourceMappingURL=http://127.0.0.1:${port}/${dir}/index.js.map`;
-
-    // 首次执行时检查并替换
-    try {
-      let data = fs.readFileSync(targetFile, "utf8");
-      if (data.includes(targetStr)) {
-        const result = data.replaceAll(targetStr, replaceStr);
-        if (result !== data) {
-          fs.writeFileSync(targetFile, result, "utf8");
-          console.log(`首次执行，sourcemap地址同步成功!`);
-        }
-      }
-    } catch (err) {
-      console.error(`首次执行时出错: ${err}`);
-      // 删除锁文件
-      fs.unlinkSync(lockFilePath);
-      return;
-    }
-
-    // 初始化文件监听
-    const watcher = chokidar.watch(targetFile, {
-      persistent: true,
-      ignoreInitial: true,
-    });
-
-    watcher.on("change", (path) => {
-      if (isSelfModifying) return;
-      // 清除之前的定时器
-      clearTimeout(debounceTimer);
-
-      // 设置新的定时器
-      debounceTimer = setTimeout(() => {
-        console.log(`🔍 检测到变化: ${path}`);
-        fs.readFile(path, "utf8", (err, data) => {
-          if (err) throw err;
-
-          if (data.includes(targetStr)) {
-            const result = data.replaceAll(targetStr, replaceStr);
-            // 检查文件内容是否真的发生了变化
-            if (result !== data) {
-              isSelfModifying = true;
-              fs.writeFile(path, result, "utf8", (err) => {
-                if (err) throw err;
-                console.log(`sourcemap地址同步成功!`);
-                isSelfModifying = false;
-              });
-            } else {
-              console.log(`文件内容未改变，无需更新~`);
-            }
-          } else {
-            console.log(`未找到sourcemap地址!`);
-          }
-        });
-      }, debounceTime);
-    });
-
-    console.log(`👀监听文件: ${targetFile}`);
-
-    // 监听 SIGINT 信号
-    process.on("SIGINT", () => {
-      try {
-        let data = fs.readFileSync(targetFile, "utf8");
-        if (data.includes(replaceStr)) {
-          const result = data.replaceAll(replaceStr, targetStr);
-          fs.writeFileSync(targetFile, result, "utf8");
-          console.log(`程序退出，已将 sourcemap 地址恢复为原始值~`);
-        }
-        // 关闭文件监听
-        watcher.close();
-        // 删除锁文件
-        fs.unlinkSync(lockFilePath);
-        process.exit();
-      } catch (err) {
-        console.error(`程序退出时出错: ${err}`);
-        // 删除锁文件
-        try {
-          fs.unlinkSync(lockFilePath);
-        } catch (unlinkErr) {
-          console.error(`删除锁文件时出错: ${unlinkErr}`);
-        }
+    lockServer.listen(lockPort, '127.0.0.1', () => {
+      // console.log(`成功获取端口锁 ${lockPort}`);
+      startWatcher();
+    }).on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.log("检测到其他终端正在运行本程序，本次执行退出！");
         process.exit(1);
       }
     });
 
-    // 监听正常退出事件
-    // process.on("exit", () => {
-    //   try {
-    //     fs.unlinkSync(lockFilePath);
-    //   } catch (err) {
-    //     console.error(`删除锁文件时出错: ${err}`);
-    //   }
-    // });
+    function startWatcher() {
+      const targetFile = path.resolve(CWD, dir, "index.js");
+      if (!fs.existsSync(targetFile)) {
+        console.log(`文件不存在: ${targetFile}`);
+        lockServer.close();
+        process.exit(1);
+      }
+
+      // 定义一个标志位，用于避免自身修改触发事件
+      let isSelfModifying = false;
+      // 防抖定时器
+      let debounceTimer;
+      // 防抖时间（毫秒）
+      const debounceTime = 200;
+  
+      const targetStr = "sourceMappingURL=index.js.map";
+      const replaceStr = `sourceMappingURL=http://127.0.0.1:${port}/${dir}/index.js.map`;
+  
+      // 首次执行时检查并替换
+      try {
+        let data = fs.readFileSync(targetFile, "utf8");
+        if (data.includes(targetStr)) {
+          const result = data.replaceAll(targetStr, replaceStr);
+          if (result !== data) {
+            fs.writeFileSync(targetFile, result, "utf8");
+            console.log(`首次执行，sourcemap地址同步成功!`);
+          }
+        }
+      } catch (err) {
+        console.error(`首次执行时出错: ${err}`);
+        // 删除锁文件
+        fs.unlinkSync(lockFilePath);
+        return;
+      }
+  
+      // 初始化文件监听
+      const watcher = chokidar.watch(targetFile, {
+        persistent: true,
+        ignoreInitial: true,
+      });
+  
+      watcher.on("change", (path) => {
+        if (isSelfModifying) return;
+        // 清除之前的定时器
+        clearTimeout(debounceTimer);
+  
+        // 设置新的定时器
+        debounceTimer = setTimeout(() => {
+          console.log(`🔍 检测到变化: ${path}`);
+          fs.readFile(path, "utf8", (err, data) => {
+            if (err) throw err;
+  
+            if (data.includes(targetStr)) {
+              const result = data.replaceAll(targetStr, replaceStr);
+              // 检查文件内容是否真的发生了变化
+              if (result !== data) {
+                isSelfModifying = true;
+                fs.writeFile(path, result, "utf8", (err) => {
+                  if (err) throw err;
+                  console.log(`sourcemap地址同步成功!`);
+                  isSelfModifying = false;
+                });
+              } else {
+                console.log(`文件内容未改变，无需更新~`);
+              }
+            } else {
+              console.log(`未找到sourcemap地址!`);
+            }
+          });
+        }, debounceTime);
+      });
+  
+      console.log(`👀监听文件: ${targetFile}`);
+  
+      // 监听 SIGINT 信号
+      process.on("SIGINT", () => {
+        try {
+          let data = fs.readFileSync(targetFile, "utf8");
+          if (data.includes(replaceStr)) {
+            const result = data.replaceAll(replaceStr, targetStr);
+            fs.writeFileSync(targetFile, result, "utf8");
+            console.log(`程序退出，已将 sourcemap 地址恢复为原始值~`);
+          }
+          watcher.close();
+          lockServer.close(); // 关闭端口锁
+          process.exit();
+        } catch (err) {
+          console.error(`程序退出时出错: ${err}`);
+          lockServer.close();
+          process.exit(1);
+        }
+      });
+    }
   },
 ];
 
